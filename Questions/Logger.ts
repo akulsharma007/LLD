@@ -55,4 +55,4 @@ class Logger implements ILogger {
 const consoleOutput = new ConsoleOutput()
 const logger = new Logger(consoleOutput)
 logger.log("test")
-logger.setterLogOutput(new FileOutput())
+logger.setOutput(new FileOutput())
