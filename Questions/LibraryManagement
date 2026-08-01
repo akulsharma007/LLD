@@ -1,0 +1,163 @@
+// Q. Design a library system. Members can borrow and return books. A book can have multiple copies. 
+// Borrowing fails if no copies are available. Track due dates (just use a daysToReturn number). 
+// Support: searching books by title/author, listing a member's borrowed books, and returning overdue status.
+const DAYS_TO_RETURN = 10;
+
+class Book {
+    constructor(private title: string, private author: string) { }
+
+    getTitle(): string { return this.title; }
+    getAuthor(): string { return this.author; }
+}
+
+class Member {
+    // ✅ DO: initialize internal state yourself, don't ask the caller to pass it in
+    private borrowedBooks: Map<Book, Date> = new Map();
+
+    constructor(private name: string) { }
+
+    getName(): string { return this.name; }
+
+    // ✅ DO: return a copy of internal collections, never the reference
+    // ❌ MISTAKE: returning `this.borrowedBooks` directly lets callers mutate internal state
+    getBorrowedBooks(): Map<Book, Date> {
+        return new Map(this.borrowedBooks);
+    }
+
+    borrowBook(book: Book): void {
+        if (this.borrowedBooks.has(book)) {
+            throw new Error(`Already borrowed "${book.getTitle()}"`);
+        }
+        this.borrowedBooks.set(book, new Date());
+    }
+
+    // ✅ DO: always allow the return — report overdue status, never block the action
+    // ❌ MISTAKE: throwing when overdue means the book can never be returned — illogical
+    // Return overdue days and let the orchestrator (LibraryManagement) decide what to do
+    returnBook(book: Book): number {
+        if (!this.borrowedBooks.has(book)) {
+            throw new Error(`You don't have "${book.getTitle()}"`);
+        }
+        const overdueDays = this.calculateOverdueDays(this.borrowedBooks.get(book)!);
+        this.borrowedBooks.delete(book);
+        return overdueDays;
+    }
+
+    getOverdueDays(book: Book): number {
+        const borrowedDate = this.borrowedBooks.get(book);
+        if (!borrowedDate) throw new Error(`You don't have "${book.getTitle()}"`);
+        return this.calculateOverdueDays(borrowedDate);
+    }
+
+    getAllOverdueDays(): Map<Book, number> {
+        return new Map(
+            Array.from(this.borrowedBooks, ([book, date]) => [
+                book,
+                this.calculateOverdueDays(date)
+            ])
+        );
+    }
+
+    // ✅ DO: implement real logic — stubs that return hardcoded values (like `return 2`)
+    // will fail silently and make every book appear overdue
+    private calculateOverdueDays(borrowedDate: Date): number {
+        const dueDate = new Date(borrowedDate);
+        dueDate.setDate(dueDate.getDate() + DAYS_TO_RETURN);
+        const diffMs = new Date().getTime() - dueDate.getTime();
+        return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+    }
+}
+
+class BooksInventory {
+    private books: Book[] = [];
+    private copies: Map<Book, number> = new Map();
+
+    // ✅ DO: use an addBook method instead of hardcoding inventory in the constructor
+    // ❌ MISTAKE: hardcoding books in constructor makes the class untestable and inflexible
+    addBook(book: Book, count: number = 1): void {
+        this.books.push(book);
+        this.copies.set(book, count);
+    }
+
+    getCopies(book: Book): number {
+        return this.copies.get(book) ?? 0;
+    }
+
+    // ✅ DO: check `> 0` explicitly for counts
+    // ❌ MISTAKE: `if (currentBookCount)` is falsy for 0 but also for NaN — be explicit
+    decreaseCopies(book: Book): void {
+        const count = this.getCopies(book);
+        if (count <= 0) throw new Error(`No copies available for "${book.getTitle()}"`);
+        this.copies.set(book, count - 1);
+    }
+
+    increaseCopies(book: Book): void {
+        this.copies.set(book, this.getCopies(book) + 1);
+    }
+
+    // ✅ DO: search methods should return arrays — multiple books can match
+    // ❌ MISTAKE: returning a single book breaks when multiple titles/authors match
+    searchByTitle(title: string): Book[] {
+        return this.books.filter(b =>
+            b.getTitle().toLowerCase().includes(title.toLowerCase())
+        );
+    }
+
+    // ✅ DO: search by the correct field
+    // ❌ MISTAKE: copy-pasting getByTitle and forgetting to change getTitle() to getAuthor()
+    searchByAuthor(author: string): Book[] {
+        return this.books.filter(b =>
+            b.getAuthor().toLowerCase().includes(author.toLowerCase())
+        );
+    }
+}
+
+class LibraryManagement {
+    constructor(private inventory: BooksInventory) { }
+
+    borrowBook(member: Member, book: Book): void {
+        // decrease inventory first — if this throws (no copies), member state is untouched
+        this.inventory.decreaseCopies(book);
+        member.borrowBook(book);
+    }
+
+    // ✅ DO: handle penalty logic in the orchestrator, not in Member.returnBook
+    // ❌ MISTAKE: Member.returnBook throwing on overdue means the book is stuck — never returnable
+    returnBook(member: Member, book: Book): void {
+        const overdueDays = member.returnBook(book);
+        this.inventory.increaseCopies(book);
+        if (overdueDays > 0) {
+            console.log(`"${member.getName()}" is ${overdueDays} day(s) overdue for "${book.getTitle()}"`);
+        }
+    }
+
+    getBorrowedBooks(member: Member): Map<Book, Date> {
+        return member.getBorrowedBooks();
+    }
+
+    getOverdueStatus(member: Member): Map<Book, number> {
+        return member.getAllOverdueDays();
+    }
+
+    searchByTitle(title: string): Book[] {
+        return this.inventory.searchByTitle(title);
+    }
+
+    searchByAuthor(author: string): Book[] {
+        return this.inventory.searchByAuthor(author);
+    }
+}
+
+// Usage
+const inventory = new BooksInventory();
+const book1 = new Book("Clean Code", "Robert Martin");
+const book2 = new Book("The Pragmatic Programmer", "David Thomas");
+inventory.addBook(book1, 3);
+inventory.addBook(book2, 2);
+
+const library = new LibraryManagement(inventory);
+const member = new Member("Akul");
+
+library.borrowBook(member, book1);
+library.returnBook(member, book1);
+console.log(library.searchByAuthor("Robert"));
